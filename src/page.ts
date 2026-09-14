@@ -123,6 +123,34 @@ function recentCardsHtml(events: FeedEvent[]): string {
     <div class="cards">${cards}</div>`;
 }
 
+function embedPageStyles(hasEmbeds: boolean): string {
+  if (!hasEmbeds) return "";
+  return `.recent-item { min-width: 0; }
+    .recent-item iframe { max-width: 100%; }
+    .recent-item[data-embed="pending"] > .card,
+    .recent-item[data-embed="ready"] .card { display: none; }
+    .recent-item[data-embed="failed"] > .twitter-tweet,
+    .recent-item[data-embed="failed"] iframe { display: none; }
+    blockquote.twitter-tweet {
+      margin: 0;
+      padding: 0.9rem 1rem;
+      background: #16181d;
+      border: 1px solid #2a2d34;
+      border-radius: 16px;
+    }
+    blockquote.twitter-tweet a { color: #9ad; }`;
+}
+
+function embedNoscriptStyles(hasEmbeds: boolean): string {
+  if (!hasEmbeds) return "";
+  return `<noscript>
+    <style>
+      .recent-item[data-embed="pending"] > .card { display: block; }
+      .recent-item[data-embed="pending"] > .twitter-tweet { display: none; }
+    </style>
+  </noscript>`;
+}
+
 function recentWidgetsLoaderHtml(hasEmbeds: boolean): string {
   if (!hasEmbeds) return "";
   return `<script>
@@ -217,12 +245,7 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       gap: 0.65rem;
       margin: 0 0 1.25rem;
     }
-    .recent-item { min-width: 0; }
-    .recent-item iframe { max-width: 100%; }
-    .recent-item[data-embed="pending"] > .card,
-    .recent-item[data-embed="ready"] .card { display: none; }
-    .recent-item[data-embed="failed"] > .twitter-tweet,
-    .recent-item[data-embed="failed"] iframe { display: none; }
+    ${embedPageStyles(hasEmbeds)}
     .card {
       display: block;
       text-decoration: none;
@@ -253,23 +276,10 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
-    blockquote.twitter-tweet {
-      margin: 0;
-      padding: 0.9rem 1rem;
-      background: #16181d;
-      border: 1px solid #2a2d34;
-      border-radius: 16px;
-    }
-    blockquote.twitter-tweet a { color: #9ad; }
     footer { color: #8a8a8a; font-size: 0.92rem; }
     footer a { color: #bdbdbd; }
   </style>
-  <noscript>
-    <style>
-      .recent-item[data-embed="pending"] > .card { display: block; }
-      .recent-item[data-embed="pending"] > .twitter-tweet { display: none; }
-    </style>
-  </noscript>
+  ${embedNoscriptStyles(hasEmbeds)}
 </head>
 <body>
   <main>
