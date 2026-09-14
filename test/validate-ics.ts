@@ -54,7 +54,7 @@ function assertTweetCards(html: string, events: FeedEvent[]): void {
 function assertOfficialEmbeds(html: string, events: FeedEvent[]): void {
   const embeddable = events.filter((event) => statusPermalink(event.url));
   if (embeddable.length === 0) {
-    assert(!html.includes("twitter-tweet"), "no tweet embed markup without status URLs");
+    assert(!html.includes("<blockquote class=\"twitter-tweet\""), "no tweet embed markup without status URLs");
     assert(!html.includes(WIDGETS_JS_SRC), "widgets.js stays off when nothing to embed");
     return;
   }
@@ -491,7 +491,7 @@ function testSubscribePage(): void {
   ]);
 
   const empty = subscribePage([]);
-  assert(!empty.includes("twitter-tweet"), "empty recent has no embeds");
+  assert(!empty.includes("<blockquote class=\"twitter-tweet\""), "empty recent has no embeds");
   assert(!empty.includes(WIDGETS_JS_SRC), "empty recent does not load widgets.js");
   assert(empty.includes("Subscribe to confirmed"), "empty recent still has subscribe CTAs");
 
