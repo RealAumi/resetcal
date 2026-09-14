@@ -1,5 +1,6 @@
 import { fetchFeed, isBanked, isBoost, isConfirmed, isForecast, isTentative, selectEvents } from "../src/feed";
-import { buildCalendar, foldLine, nextSequence } from "../src/ics";
+import { buildCalendar, EVENT_SUMMARY, foldLine, nextSequence } from "../src/ics";
+import { CADENCE_COPY, recentConfirmed, subscribePage } from "../src/page";
 import type { Feed, FeedEvent } from "../src/types";
 import ICAL from "ical.js";
 
@@ -274,6 +275,18 @@ function testIcsParse(): void {
   assert(first.getFirstProperty("dtstart"), "DTSTART present");
   assert(first.getFirstProperty("dtend"), "DTEND present");
   assert(first.getFirstProperty("sequence") !== null, "SEQUENCE present");
+  assert(String(first.getFirstPropertyValue("summary")) === EVENT_SUMMARY, "SUMMARY is short fixed title");
+  assert(
+    String(first.getFirstPropertyValue("description")).includes("Future confirmed reset with a long summary"),
+    "DESCRIPTION keeps full source text",
+  );
+  for (const vevent of [...confirmedEventsParsed, ...tentativeEventsParsed]) {
+    assert(String(vevent.getFirstPropertyValue("summary")) === EVENT_SUMMARY, "every VEVENT SUMMARY is Codex reset");
+    assert(vevent.getAllSubcomponents("valarm").length === 0, "no VALARM");
+    assert(!vevent.getFirstProperty("attach"), "no ATTACH");
+  }
+  assert(!confirmed.includes("BEGIN:VALARM") && !tentative.includes("BEGIN:VALARM"), "calendars omit VALARM");
+  assert(!confirmed.includes("ATTACH") && !tentative.includes("ATTACH"), "calendars omit ATTACH");
 
   const preview = tentativeEventsParsed.find((event) => event.getFirstPropertyValue("uid") === "tentative-preview");
   assert(preview, "tentative UID");
@@ -298,6 +311,11 @@ async function testLiveFeed(): Promise<void> {
   const parsed = parseCalendar(ics);
   const vevents = parsed.getAllSubcomponents("vevent");
   assert(vevents.length === confirmed.length, "live confirmed VEVENT count");
+  for (const vevent of vevents) {
+    assert(String(vevent.getFirstPropertyValue("summary")) === EVENT_SUMMARY, "live SUMMARY is Codex reset");
+    assert(vevent.getAllSubcomponents("valarm").length === 0, "live no VALARM");
+    assert(!vevent.getFirstProperty("attach"), "live no ATTACH");
+  }
   const confirmedIds = new Set(confirmed.map((event) => event.id));
   assert(confirmedIds.has("2098685367058612394"), "Sep 12 live announced must be confirmed");
   assert(confirmedIds.has("2094252447271366730"), "Aug 31 archive hard must be confirmed");
@@ -331,10 +349,31 @@ async function testLiveFeed(): Promise<void> {
   }
 }
 
+function testSubscribePage(): void {
+  const feed: Feed = { events: fixtureEvents() };
+  const confirmed = selectEvents(feed, "confirmed", now);
+  const recent = recentConfirmed(confirmed);
+  assert(recent.length > 0 && recent.length <= 8, "recent confirmed is a short slice");
+  assert(
+    recent.every((event) => confirmed.some((row) => row.id === event.id)),
+    "recent confirmed reuses the confirmed filter",
+  );
+  const html = subscribePage("https://example.test", "example.test", recent);
+  assert(html.includes("webcal://example.test/calendar.ics"), "webcal uses request host");
+  assert(html.includes("https://example.test/calendar.ics"), "https fallback uses request origin");
+  assert(html.includes("webcal://example.test/calendar-tentative.ics"), "tentative webcal uses request host");
+  assert(!html.includes("workers.dev"), "subscribe links are not hardcoded to workers.dev");
+  assert(html.includes(CADENCE_COPY), "landing page states 15-minute refresh cadence");
+  assert(html.includes("https://x.com/thsottiaux/status/confirmed-window"), "recent row links to source URL");
+  assert(html.includes("2026-09-20 · Codex reset"), "recent row uses short date label");
+  assert(!html.includes("Future confirmed reset with a long summary"), "landing does not dump tweet SUMMARY text");
+}
+
 async function main(): Promise<void> {
   testFilters();
   testSequence();
   testIcsParse();
+  testSubscribePage();
   await testLiveFeed();
   console.log("ICS validity: ical.js parse + structural checks passed");
 }

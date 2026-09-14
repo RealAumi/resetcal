@@ -8,12 +8,14 @@ A thin Cloudflare Worker that turns the existing [codex-reset.com](https://codex
 
 | Method | Path | What |
 | --- | --- | --- |
-| `GET` | `/` | One-screen subscribe page |
+| `GET` | `/` | Subscribe page, recent confirmed, 约每 15 分钟刷新 |
 | `GET` | `/calendar.ics` | Confirmed resets |
 | `GET` | `/calendar-tentative.ics` | Tentative / preview / scheduled |
 | `GET` | `/health` | Last successful feed fetch time |
 
-Primary subscribe is `webcal://<host>/calendar.ics`, with `https://<host>/calendar.ics` as fallback.
+Primary subscribe is `webcal://<host>/calendar.ics`, with `https://<host>/calendar.ics` as fallback. Links are built from the incoming request host, so a custom domain works if Cloudflare routes it. Do not hardcode `workers.dev`.
+
+Each VEVENT uses a short fixed `SUMMARY` (`Codex reset`). Full source text stays in `DESCRIPTION`; `URL` points at the source post. Window moves increment `SEQUENCE`. No `VALARM` or `ATTACH`.
 
 ## Filters
 
@@ -79,10 +81,8 @@ Do **not** commit a Cloudflare token. Worker name is **`resetcal`**. Run these f
    npx wrangler deploy
    ```
 
-Cron is already set to `*/10 * * * *` (every 10 minutes). After deploy, the live URL is:
+Cron is already set to `*/15 * * * *` (约每 15 分钟刷新). After deploy, the live URL is:
 
 ```text
 https://resetcal.<your-account>.workers.dev
 ```
-
-Custom domains are out of scope for this worker.
