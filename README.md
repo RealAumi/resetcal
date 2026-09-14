@@ -19,9 +19,9 @@ Primary subscribe is `webcal://<host>/calendar.ics`, with `https://<host>/calend
 
 Source: `https://codex-reset.com/api/feed` (`events[]`, deduped by `id`).
 
-- **Confirmed** = `source === "archive"` AND `type === "reset"` AND `confidence === "high"` AND `preview === false`. Sparse: future or in-flight windows, plus the last 14 days of hard resets (`reset_kind === "hard"`; archive high-conf non-preview resets with missing `reset_kind` count as hard for that window).
-- **Tentative** = scheduled / preview resets (`preview === true` and/or scheduled announcement states).
-- Neither feed includes forecast-% or banked VEVENTs.
+- **Confirmed** prefers `source === "archive"` AND `type === "reset"` AND `confidence === "high"` AND `preview === false`. Also includes completed live / operator-observed resets (`type === "reset"`, `preview === false`, `announcement_state === "announced"`). Sparse: future or in-flight windows, plus the last 14 UTC calendar days of hard resets (`reset_kind === "hard"`; confirmed candidates with missing `reset_kind` count as hard). The 14-day window is inclusive calendar days: `(utcDay(now) - utcDay(event)) <= 14`, using `event.date` (YYYY-MM-DD) when present, else the UTC date of window start / `announced_at`. Live medium rows do not block those 14-day hits.
+- **Tentative** = scheduled / preview resets (`preview === true` and/or scheduled announcement states). Empty is expected when nothing is scheduled or previewed.
+- Neither feed includes forecast-% , banked, or boost VEVENTs. Preview/scheduled stay tentative-only. Live/operator-observed resets without `announcement_state === "announced"` are not confirmed.
 
 ## Local
 

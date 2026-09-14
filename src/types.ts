@@ -14,6 +14,7 @@ export interface FeedEvent {
   source?: string | null;
   confidence?: string | null;
   preview?: boolean | null;
+  date?: string | null;
   announced_at?: string | null;
   official_window?: OfficialWindow | null;
   url?: string | null;

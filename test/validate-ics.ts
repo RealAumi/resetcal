@@ -1,4 +1,4 @@
-import { fetchFeed, isBanked, isConfirmed, isForecast, isTentative, selectEvents } from "../src/feed";
+import { fetchFeed, isBanked, isBoost, isConfirmed, isForecast, isTentative, selectEvents } from "../src/feed";
 import { buildCalendar, foldLine, nextSequence } from "../src/ics";
 import type { Feed, FeedEvent } from "../src/types";
 import ICAL from "ical.js";
@@ -68,6 +68,29 @@ function fixtureEvents(): FeedEvent[] {
       announced_at: "2026-09-12T12:00:00.000Z",
     },
     {
+      id: "archive-hard-boundary",
+      type: "reset",
+      source: "archive",
+      confidence: "high",
+      preview: false,
+      reset_kind: "hard",
+      announcement_state: "announced",
+      summary: "Aug 31-style archive hard near the rolling-ms boundary",
+      date: "2026-08-31",
+      announced_at: "2026-08-31T02:34:27.000Z",
+    },
+    {
+      id: "archive-hard-day-15",
+      type: "reset",
+      source: "archive",
+      confidence: "high",
+      preview: false,
+      reset_kind: "hard",
+      summary: "One UTC day past the inclusive 14-day window",
+      date: "2026-08-30",
+      announced_at: "2026-08-30T12:00:00.000Z",
+    },
+    {
       id: "old-hard",
       type: "reset",
       source: "archive",
@@ -117,8 +140,68 @@ function fixtureEvents(): FeedEvent[] {
       confidence: "medium",
       preview: false,
       announcement_state: "announced",
-      summary: "Live medium is not confirmed",
+      summary: "Reset all propagated. Sweet dreams.",
+      date: "2026-09-12",
       announced_at: "2026-09-12T08:09:17.000Z",
+    },
+    {
+      id: "live-reset-state-none",
+      type: "reset",
+      source: "live",
+      confidence: "medium",
+      preview: false,
+      announcement_state: "none",
+      summary: "Live reset with announcement_state none must not be confirmed",
+      date: "2026-09-12",
+      announced_at: "2026-09-12T03:20:36.000Z",
+    },
+    {
+      id: "live-reset-state-missing",
+      type: "reset",
+      source: "live",
+      confidence: "medium",
+      preview: false,
+      summary: "Live reset with missing announcement_state must not be confirmed",
+      date: "2026-09-12",
+      announced_at: "2026-09-12T04:00:00.000Z",
+    },
+    {
+      id: "operator-observed-announced",
+      type: "reset",
+      source: "operator-observed",
+      confidence: "medium",
+      preview: false,
+      announcement_state: "announced",
+      summary: "Operator-observed announced reset is a confirmed candidate",
+      date: "2026-09-08",
+      announced_at: "2026-09-08T04:00:00.000Z",
+    },
+    {
+      id: "scheduled-archive",
+      type: "reset",
+      source: "archive",
+      confidence: "high",
+      preview: false,
+      reset_kind: "hard",
+      announcement_state: "scheduled",
+      summary: "Scheduled reset is tentative only",
+      announced_at: "2026-09-21T18:00:00.000Z",
+      official_window: {
+        start_at: "2026-09-21T18:00:00.000Z",
+        end_at: "2026-09-21T19:00:00.000Z",
+      },
+    },
+    {
+      id: "boost-live",
+      type: "boost",
+      group: "boost",
+      source: "live",
+      confidence: "medium",
+      preview: false,
+      announcement_state: "announced",
+      summary: "Boost must not appear",
+      date: "2026-09-12",
+      announced_at: "2026-09-12T06:00:00.000Z",
     },
   ];
 }
@@ -130,20 +213,32 @@ function testFilters(): void {
   assert(confirmed.includes("confirmed-window"), "future window should be confirmed");
   assert(confirmed.includes("confirmed-recent-hard"), "recent hard should be confirmed");
   assert(confirmed.includes("confirmed-missing-kind"), "missing reset_kind archive high-conf should be confirmed");
+  assert(confirmed.includes("archive-hard-boundary"), "Aug 31-style archive hard on day 14 should be confirmed");
+  assert(confirmed.includes("live-medium"), "Sep 12-style live/medium/announced should be confirmed");
+  assert(confirmed.includes("operator-observed-announced"), "operator-observed announced should be confirmed");
+  assert(!confirmed.includes("archive-hard-day-15"), "day 15 archive hard should drop off");
   assert(!confirmed.includes("old-hard"), "old hard should drop off");
   assert(!confirmed.includes("tentative-preview"), "preview must not be confirmed");
+  assert(!confirmed.includes("scheduled-archive"), "scheduled must not be confirmed");
   assert(!confirmed.includes("banked"), "banked must not be confirmed");
   assert(!confirmed.includes("forecast-pct"), "forecast must not be confirmed");
-  assert(!confirmed.includes("live-medium"), "live medium must not be confirmed");
+  assert(!confirmed.includes("boost-live"), "boost must not be confirmed");
+  assert(!confirmed.includes("live-reset-state-none"), "live reset with announcement_state none must not be confirmed");
+  assert(!confirmed.includes("live-reset-state-missing"), "live reset with missing announcement_state must not be confirmed");
   assert(tentative.includes("tentative-preview"), "preview should be tentative");
+  assert(tentative.includes("scheduled-archive"), "scheduled should be tentative");
   assert(!tentative.includes("banked"), "banked must not be tentative");
   assert(!tentative.includes("forecast-pct"), "forecast must not be tentative");
+  assert(!tentative.includes("boost-live"), "boost must not be tentative");
   assert(!tentative.includes("confirmed-window"), "confirmed event must not also be tentative");
+  assert(!tentative.includes("live-medium"), "announced live reset must not also be tentative");
   const banked = fixtureEvents().find((e) => e.id === "banked")!;
   const forecast = fixtureEvents().find((e) => e.id === "forecast-pct")!;
-  assert(isBanked(banked) && isForecast(forecast), "banked/forecast helpers");
+  const boost = fixtureEvents().find((e) => e.id === "boost-live")!;
+  assert(isBanked(banked) && isForecast(forecast) && isBoost(boost), "banked/forecast/boost helpers");
   assert(!isConfirmed(banked, now) && !isTentative(banked, now), "banked excluded from both");
   assert(!isConfirmed(forecast, now) && !isTentative(forecast, now), "forecast excluded from both");
+  assert(!isConfirmed(boost, now) && !isTentative(boost, now), "boost excluded from both");
 }
 
 function testSequence(): void {
@@ -169,8 +264,8 @@ function testIcsParse(): void {
   const tentativeComp = parseCalendar(tentative);
   const confirmedEventsParsed = confirmedComp.getAllSubcomponents("vevent");
   const tentativeEventsParsed = tentativeComp.getAllSubcomponents("vevent");
-  assert(confirmedEventsParsed.length === 3, `expected 3 confirmed VEVENTs, got ${confirmedEventsParsed.length}`);
-  assert(tentativeEventsParsed.length === 1, `expected 1 tentative VEVENT, got ${tentativeEventsParsed.length}`);
+  assert(confirmedEventsParsed.length === 6, `expected 6 confirmed VEVENTs, got ${confirmedEventsParsed.length}`);
+  assert(tentativeEventsParsed.length === 2, `expected 2 tentative VEVENTs, got ${tentativeEventsParsed.length}`);
 
   const first = confirmedEventsParsed[0]!;
   assert(first.getFirstPropertyValue("uid") === "confirmed-window", "UID is source event id");
@@ -180,8 +275,8 @@ function testIcsParse(): void {
   assert(first.getFirstProperty("dtend"), "DTEND present");
   assert(first.getFirstProperty("sequence") !== null, "SEQUENCE present");
 
-  const preview = tentativeEventsParsed[0]!;
-  assert(preview.getFirstPropertyValue("uid") === "tentative-preview", "tentative UID");
+  const preview = tentativeEventsParsed.find((event) => event.getFirstPropertyValue("uid") === "tentative-preview");
+  assert(preview, "tentative UID");
   assert(String(preview.getFirstPropertyValue("status")).toUpperCase() === "TENTATIVE", "STATUS TENTATIVE");
 
   const long = foldLine(
@@ -203,16 +298,27 @@ async function testLiveFeed(): Promise<void> {
   const parsed = parseCalendar(ics);
   const vevents = parsed.getAllSubcomponents("vevent");
   assert(vevents.length === confirmed.length, "live confirmed VEVENT count");
+  const confirmedIds = new Set(confirmed.map((event) => event.id));
+  assert(confirmedIds.has("2098685367058612394"), "Sep 12 live announced must be confirmed");
+  assert(confirmedIds.has("2094252447271366730"), "Aug 31 archive hard must be confirmed");
+  assert(!confirmedIds.has("2098612714704891959"), "Astra quality post must not be confirmed");
   for (const event of confirmed) {
-    assert(event.source === "archive", "live confirmed source");
     assert(event.type === "reset", "live confirmed type");
-    assert(event.confidence === "high", "live confirmed confidence");
     assert(event.preview === false, "live confirmed preview");
-    assert(!isBanked(event) && !isForecast(event), "live confirmed not banked/forecast");
+    assert(!isBanked(event) && !isForecast(event) && !isBoost(event), "live confirmed not banked/forecast/boost");
+    assert(event.announcement_state !== "scheduled" && event.announcement_state !== "preview", "live confirmed not scheduled/preview");
+    const source = (event.source ?? "").trim().toLowerCase();
+    if (source === "archive") {
+      assert(event.confidence === "high", "archive confirmed confidence");
+    } else if (source === "live" || source === "operator-observed") {
+      assert((event.announcement_state ?? "").trim().toLowerCase() === "announced", "live confirmed announcement_state");
+    } else {
+      throw new Error(`unexpected confirmed source ${event.source}`);
+    }
   }
   for (const event of tentative) {
     assert(event.type === "reset", "live tentative type");
-    assert(!isBanked(event) && !isForecast(event), "live tentative not banked/forecast");
+    assert(!isBanked(event) && !isForecast(event) && !isBoost(event), "live tentative not banked/forecast/boost");
   }
   const tentativeIcs = buildCalendar(tentative, "tentative", new Map());
   structuralCheck(tentativeIcs, "Codex resets (tentative)");

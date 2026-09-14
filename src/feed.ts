@@ -2,7 +2,10 @@ import type { Feed, FeedEvent, WindowTimes } from "./types";
 
 export const FEED_URL = "https://codex-reset.com/api/feed";
 export const FALLBACK_WINDOW_MS = 30 * 60 * 1000;
-export const RECENT_HARD_MS = 14 * 24 * 60 * 60 * 1000;
+export const RECENT_HARD_DAYS = 14;
+const MS_PER_UTC_DAY = 24 * 60 * 60 * 1000;
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ANNOUNCED_SOURCES = new Set(["live", "operator-observed"]);
 
 const SCHEDULED_STATES = new Set(["scheduled", "preview", "pending"]);
 
@@ -25,8 +28,16 @@ export function isBanked(event: FeedEvent): boolean {
   return lower(event.reset_kind) === "banked" || lower(event.type) === "credits";
 }
 
+export function isBoost(event: FeedEvent): boolean {
+  return lower(event.type) === "boost" || lower(event.group) === "boost";
+}
+
 export function isResetType(event: FeedEvent): boolean {
   return lower(event.type) === "reset";
+}
+
+function isExcludedKind(event: FeedEvent): boolean {
+  return isBanked(event) || isForecast(event) || isBoost(event);
 }
 
 export function isConfirmedBase(event: FeedEvent): boolean {
@@ -35,15 +46,75 @@ export function isConfirmedBase(event: FeedEvent): boolean {
     isResetType(event) &&
     lower(event.confidence) === "high" &&
     event.preview === false &&
-    !isBanked(event) &&
-    !isForecast(event)
+    !isScheduledOrPreview(event) &&
+    !isExcludedKind(event)
   );
+}
+
+export function isAnnouncedObservedReset(event: FeedEvent): boolean {
+  return (
+    isResetType(event) &&
+    event.preview === false &&
+    !isScheduledOrPreview(event) &&
+    !isExcludedKind(event) &&
+    ANNOUNCED_SOURCES.has(lower(event.source)) &&
+    lower(event.announcement_state) === "announced"
+  );
+}
+
+export function isConfirmedCandidate(event: FeedEvent): boolean {
+  return isConfirmedBase(event) || isAnnouncedObservedReset(event);
 }
 
 export function isHardForFourteenDayWindow(event: FeedEvent): boolean {
   if (lower(event.reset_kind) === "hard") return true;
-  // Archive high-conf non-preview resets with missing reset_kind count as hard.
-  return !event.reset_kind && isConfirmedBase(event);
+  return !event.reset_kind && isConfirmedCandidate(event);
+}
+
+function utcMidnight(date: Date): number {
+  return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+}
+
+function parseUtcDateOnly(value: string): Date | null {
+  const match = DATE_ONLY.exec(value.trim());
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+export function eventCalendarDate(event: FeedEvent, win: WindowTimes | null): Date | null {
+  if (event.date) {
+    const fromDate = parseUtcDateOnly(event.date);
+    if (fromDate) return fromDate;
+  }
+  if (event.announced_at) {
+    const announced = new Date(event.announced_at);
+    if (!Number.isNaN(announced.getTime())) {
+      return new Date(utcMidnight(announced));
+    }
+  }
+  if (win) {
+    return new Date(utcMidnight(win.start));
+  }
+  return null;
+}
+
+export function inclusiveUtcDayDelta(now: Date, eventDay: Date): number {
+  return Math.round((utcMidnight(now) - utcMidnight(eventDay)) / MS_PER_UTC_DAY);
+}
+
+export function isWithinInclusiveUtcDays(eventDay: Date, now: Date, days: number): boolean {
+  return inclusiveUtcDayDelta(now, eventDay) <= days;
 }
 
 export function eventWindow(event: FeedEvent): WindowTimes | null {
@@ -80,12 +151,13 @@ export function isFutureOrInFlight(win: WindowTimes, now: Date): boolean {
 
 export function isRecentHard(event: FeedEvent, win: WindowTimes, now: Date): boolean {
   if (!isHardForFourteenDayWindow(event)) return false;
-  const cutoff = now.getTime() - RECENT_HARD_MS;
-  return win.end.getTime() >= cutoff || win.start.getTime() >= cutoff;
+  const day = eventCalendarDate(event, win);
+  if (!day) return false;
+  return isWithinInclusiveUtcDays(day, now, RECENT_HARD_DAYS);
 }
 
 export function isConfirmed(event: FeedEvent, now: Date): boolean {
-  if (!isConfirmedBase(event)) return false;
+  if (!isConfirmedCandidate(event)) return false;
   const win = eventWindow(event);
   if (!win) return false;
   return isFutureOrInFlight(win, now) || isRecentHard(event, win, now);
@@ -99,13 +171,15 @@ export function isScheduledOrPreview(event: FeedEvent): boolean {
 }
 
 export function isTentative(event: FeedEvent, now: Date): boolean {
-  if (!isResetType(event) || isBanked(event) || isForecast(event)) return false;
+  if (!isResetType(event) || isExcludedKind(event)) return false;
   if (isConfirmed(event, now)) return false;
   if (!isScheduledOrPreview(event)) return false;
   const win = eventWindow(event);
   if (!win) return false;
-  const cutoff = now.getTime() - RECENT_HARD_MS;
-  return isFutureOrInFlight(win, now) || win.end.getTime() >= cutoff || win.start.getTime() >= cutoff;
+  if (isFutureOrInFlight(win, now)) return true;
+  const day = eventCalendarDate(event, win);
+  if (!day) return false;
+  return isWithinInclusiveUtcDays(day, now, RECENT_HARD_DAYS);
 }
 
 export function dedupeEvents(events: FeedEvent[]): FeedEvent[] {
