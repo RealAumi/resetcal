@@ -1,11 +1,11 @@
 import { eventCalendarDate, eventWindow } from "./feed";
-import { EVENT_SUMMARY } from "./ics";
 import type { FeedEvent } from "./types";
 
 const COPY = "resetcal — unofficial Codex reset calendar. Not OpenAI. Not your quota.";
-export const CADENCE_COPY = "约每 15 分钟刷新";
+export const CADENCE_COPY = "Refreshes about every 15 minutes.";
 export const RECENT_CONFIRMED_LIMIT = 8;
 export const SUBSCRIBE_HOST = "resetcal.app";
+export const SOURCE_HANDLE = "@thsottiaux";
 
 function escapeHtml(value: string): string {
   return value
@@ -27,6 +27,10 @@ function safeHttpUrl(value: string | null | undefined): string | null {
   return null;
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
 function eventSortTime(event: FeedEvent): number {
   const day = eventCalendarDate(event, eventWindow(event));
   if (day) return day.getTime();
@@ -43,34 +47,39 @@ export function recentConfirmed(events: FeedEvent[], limit = RECENT_CONFIRMED_LI
   }).slice(0, limit);
 }
 
-function formatEventDate(event: FeedEvent): string | null {
-  const day = eventCalendarDate(event, eventWindow(event));
-  if (!day) return null;
-  const yyyy = String(day.getUTCFullYear()).padStart(4, "0");
-  const mm = String(day.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(day.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+export function eventCardTime(event: FeedEvent): string | null {
+  if (event.announced_at) {
+    const announced = new Date(event.announced_at);
+    if (!Number.isNaN(announced.getTime())) {
+      return `${announced.getUTCFullYear()}-${pad2(announced.getUTCMonth() + 1)}-${pad2(announced.getUTCDate())} ${pad2(announced.getUTCHours())}:${pad2(announced.getUTCMinutes())} UTC`;
+    }
+  }
+  const date = event.date?.trim();
+  return date || null;
 }
 
-function eventRowLabel(event: FeedEvent): string {
-  const date = formatEventDate(event);
-  return date ? `${date} · ${EVENT_SUMMARY}` : EVENT_SUMMARY;
+export function eventCardText(event: FeedEvent): string {
+  return (event.summary ?? event.text ?? "").trim();
 }
 
-function recentListHtml(events: FeedEvent[]): string {
+function recentCardsHtml(events: FeedEvent[]): string {
   if (events.length === 0) return "";
-  const items = events
+  const cards = events
     .map((event) => {
-      const label = escapeHtml(eventRowLabel(event));
       const href = safeHttpUrl(event.url);
+      const time = eventCardTime(event);
+      const text = eventCardText(event);
+      const inner = `<span class="card-handle">${escapeHtml(SOURCE_HANDLE)}</span>${
+        time ? `<time class="card-time">${escapeHtml(time)}</time>` : ""
+      }${text ? `<p class="card-text">${escapeHtml(text)}</p>` : ""}`;
       if (href) {
-        return `<li><a href="${escapeHtml(href)}">${label}</a></li>`;
+        return `<a class="card" href="${escapeHtml(href)}">${inner}</a>`;
       }
-      return `<li>${label}</li>`;
+      return `<div class="card">${inner}</div>`;
     })
     .join("");
   return `<h2 class="recent-heading">Recent confirmed</h2>
-    <ul class="recent">${items}</ul>`;
+    <div class="cards">${cards}</div>`;
 }
 
 export function subscribePage(recent: FeedEvent[] = []): string {
@@ -129,13 +138,41 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       font-weight: 650;
       margin: 0 0 0.5rem;
     }
-    .recent {
-      list-style: none;
+    .cards {
+      display: grid;
+      gap: 0.65rem;
       margin: 0 0 1.25rem;
-      padding: 0;
     }
-    .recent li { margin: 0 0 0.4rem; }
-    .recent a { color: #9ad; }
+    .card {
+      display: block;
+      text-decoration: none;
+      color: inherit;
+      background: #16181d;
+      border: 1px solid #2a2d34;
+      border-radius: 16px;
+      padding: 0.9rem 1rem;
+    }
+    a.card:hover {
+      border-color: #3d414b;
+      background: #1b1e24;
+    }
+    .card-handle {
+      display: block;
+      font-weight: 650;
+      color: #f4f4f4;
+    }
+    .card-time {
+      display: block;
+      color: #8a8a8a;
+      font-size: 0.85rem;
+      margin: 0.15rem 0 0.45rem;
+    }
+    .card-text {
+      margin: 0;
+      color: #ececec;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
     footer { color: #8a8a8a; font-size: 0.92rem; }
     footer a { color: #bdbdbd; }
   </style>
@@ -153,7 +190,7 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       <a class="fallback" href="${escapeHtml(httpsTentative)}">https fallback</a>
     </div>
     <p class="cadence">${CADENCE_COPY}</p>
-    ${recentListHtml(recent)}
+    ${recentCardsHtml(recent)}
     <footer>
       Radar:
       <a href="https://codex-reset.com">codex-reset.com</a>

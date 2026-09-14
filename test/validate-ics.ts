@@ -1,6 +1,6 @@
 import { fetchFeed, isBanked, isBoost, isConfirmed, isForecast, isTentative, selectEvents } from "../src/feed";
 import { buildCalendar, EVENT_SUMMARY, foldLine, nextSequence } from "../src/ics";
-import { CADENCE_COPY, recentConfirmed, subscribePage } from "../src/page";
+import { CADENCE_COPY, recentConfirmed, SOURCE_HANDLE, subscribePage } from "../src/page";
 import type { Feed, FeedEvent } from "../src/types";
 import ICAL from "ical.js";
 
@@ -359,16 +359,37 @@ function testSubscribePage(): void {
     "recent confirmed reuses the confirmed filter",
   );
   const html = subscribePage(recent);
+  assert(CADENCE_COPY === "Refreshes about every 15 minutes.", "cadence copy is the exact English line");
+  assert(html.includes(CADENCE_COPY), "landing page states 15-minute refresh cadence");
+  assert(!/[\u4e00-\u9fff]/.test(html), "landing page has no Chinese copy");
   assert(html.includes('href="webcal://resetcal.app/calendar.ics"'), "confirmed webcal is resetcal.app");
   assert(html.includes('href="https://resetcal.app/calendar.ics"'), "confirmed https fallback is resetcal.app");
   assert(html.includes('href="webcal://resetcal.app/calendar-tentative.ics"'), "tentative webcal is resetcal.app");
   assert(html.includes('href="https://resetcal.app/calendar-tentative.ics"'), "tentative https fallback is resetcal.app");
   assert(!html.includes("workers.dev"), "subscribe CTAs are not workers.dev");
   assert(!html.includes("example.test"), "subscribe CTAs are not request host");
-  assert(html.includes(CADENCE_COPY), "landing page states 15-minute refresh cadence");
-  assert(html.includes("https://x.com/thsottiaux/status/confirmed-window"), "recent row links to source URL");
-  assert(html.includes("2026-09-20 · Codex reset"), "recent row uses short date label");
-  assert(!html.includes("Future confirmed reset with a long summary"), "landing does not dump tweet SUMMARY text");
+  assert(
+    html.includes('class="card" href="https://x.com/thsottiaux/status/confirmed-window"'),
+    "whole card is clickable to the source URL",
+  );
+  assert(html.includes("Future confirmed reset with a long summary"), "card reuses feed summary/text");
+  assert(html.includes("2026-09-20 18:00 UTC"), "card time prefers announced_at");
+  assert(html.includes(SOURCE_HANDLE), "card may show a static handle");
+  assert(!html.includes("<img"), "no avatar image requests");
+  assert(!html.includes("platform.twitter.com"), "no official X embed widgets");
+  assert(!html.includes("twitter-widgets") && !html.includes("twitter-tweet"), "no X widget markup");
+  assert(!html.includes("2026-09-20 · Codex reset"), "cards are not a bare date/title list");
+
+  const dateOnly = subscribePage([
+    {
+      id: "date-only-card",
+      date: "2026-09-01",
+      text: "Plain text body from feed.text",
+      url: "https://x.com/thsottiaux/status/date-only-card",
+    },
+  ]);
+  assert(dateOnly.includes("2026-09-01"), "card time falls back to date");
+  assert(dateOnly.includes("Plain text body from feed.text"), "card text falls back to feed.text");
 }
 
 async function main(): Promise<void> {
