@@ -19,6 +19,7 @@ export interface FeedEvent {
   official_window?: OfficialWindow | null;
   url?: string | null;
   summary?: string | null;
+  text?: string | null;
   reset_kind?: string | null;
   announcement_state?: string | null;
   time_kind?: string | null;
