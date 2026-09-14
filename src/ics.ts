@@ -9,6 +9,8 @@ export const CALNAMES = {
   tentative: "Codex resets (tentative)",
 } as const;
 
+export const EVENT_SUMMARY = "Codex reset";
+
 function utf8Len(text: string): number {
   return new TextEncoder().encode(text).length;
 }
@@ -48,12 +50,6 @@ export function formatUtc(date: Date): string {
   return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
-function summaryLine(event: FeedEvent): string {
-  const raw = (event.summary ?? "Codex reset").trim() || "Codex reset";
-  const first = raw.split(/\r\n|\n|\r/)[0] ?? raw;
-  return first.length > 140 ? `${first.slice(0, 137)}...` : first;
-}
-
 export function buildEventLines(
   event: FeedEvent,
   win: WindowTimes,
@@ -69,7 +65,7 @@ export function buildEventLines(
     `DTEND:${formatUtc(win.end)}`,
     `STATUS:${status}`,
     `SEQUENCE:${sequence}`,
-    `SUMMARY:${escapeText(summaryLine(event))}`,
+    `SUMMARY:${escapeText(EVENT_SUMMARY)}`,
   ];
   if (event.summary) {
     lines.push(`DESCRIPTION:${escapeText(event.summary)}`);

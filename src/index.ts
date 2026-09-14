@@ -1,6 +1,6 @@
 import { eventWindow, fetchFeed, selectEvents, windowHash } from "./feed";
 import { buildCalendar, eventSeqKey, nextSequence } from "./ics";
-import { subscribePage } from "./page";
+import { recentConfirmed, subscribePage } from "./page";
 import type { Env, Feed, FeedEvent, SeqRecord } from "./types";
 
 const FEED_KEY = "feed:json";
@@ -94,7 +94,14 @@ export default {
 
     try {
       if (path === "/") {
-        return new Response(subscribePage(url.origin, url.host), {
+        let recent: FeedEvent[] = [];
+        try {
+          const feed = await feedForRequest(env.RESETCAL);
+          recent = recentConfirmed(selectEvents(feed, "confirmed"));
+        } catch {
+          // Keep subscribe links even if the feed is unavailable.
+        }
+        return new Response(subscribePage(recent), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" },
         });
       }
