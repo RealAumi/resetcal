@@ -1,0 +1,21 @@
+{
+  "name": "resetcal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "unofficial Codex reset calendar (ICS subscribe worker)",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "validate-ics": "tsx test/validate-ics.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260914.1",
+    "@types/node": "^26.5.1",
+    "ical.js": "^2.2.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.131.1"
+  }
+}
