@@ -7,8 +7,8 @@ workers_dev = true
 # `wrangler dev` uses local simulated KV and does not need real IDs.
 [[kv_namespaces]]
 binding = "RESETCAL"
-id = "00000000000000000000000000000001"
-preview_id = "00000000000000000000000000000002"
+id = "ea2fbef408f243008ae9c579ca3abd0e"
+preview_id = "cc72817145e247779fb791a8f8905ac9"
 
 # Every 10 minutes (within the 5–15 minute contract).
 [triggers]
