@@ -28,8 +28,16 @@ export function isBanked(event: FeedEvent): boolean {
   return lower(event.reset_kind) === "banked" || lower(event.type) === "credits";
 }
 
+export function isBoost(event: FeedEvent): boolean {
+  return lower(event.type) === "boost" || lower(event.group) === "boost";
+}
+
 export function isResetType(event: FeedEvent): boolean {
   return lower(event.type) === "reset";
+}
+
+function isExcludedKind(event: FeedEvent): boolean {
+  return isBanked(event) || isForecast(event) || isBoost(event);
 }
 
 export function isConfirmedBase(event: FeedEvent): boolean {
@@ -38,8 +46,8 @@ export function isConfirmedBase(event: FeedEvent): boolean {
     isResetType(event) &&
     lower(event.confidence) === "high" &&
     event.preview === false &&
-    !isBanked(event) &&
-    !isForecast(event)
+    !isScheduledOrPreview(event) &&
+    !isExcludedKind(event)
   );
 }
 
@@ -47,8 +55,8 @@ export function isAnnouncedObservedReset(event: FeedEvent): boolean {
   return (
     isResetType(event) &&
     event.preview === false &&
-    !isBanked(event) &&
-    !isForecast(event) &&
+    !isScheduledOrPreview(event) &&
+    !isExcludedKind(event) &&
     ANNOUNCED_SOURCES.has(lower(event.source)) &&
     lower(event.announcement_state) === "announced"
   );
@@ -163,7 +171,7 @@ export function isScheduledOrPreview(event: FeedEvent): boolean {
 }
 
 export function isTentative(event: FeedEvent, now: Date): boolean {
-  if (!isResetType(event) || isBanked(event) || isForecast(event)) return false;
+  if (!isResetType(event) || isExcludedKind(event)) return false;
   if (isConfirmed(event, now)) return false;
   if (!isScheduledOrPreview(event)) return false;
   const win = eventWindow(event);
