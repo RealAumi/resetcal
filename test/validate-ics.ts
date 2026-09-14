@@ -1,6 +1,14 @@
 import { fetchFeed, isBanked, isBoost, isConfirmed, isForecast, isTentative, selectEvents } from "../src/feed";
 import { buildCalendar, EVENT_SUMMARY, foldLine, nextSequence } from "../src/ics";
-import { CADENCE_COPY, eventCardText, recentConfirmed, SOURCE_HANDLE, subscribePage } from "../src/page";
+import {
+  CADENCE_COPY,
+  eventCardText,
+  recentConfirmed,
+  SOURCE_HANDLE,
+  statusPermalink,
+  subscribePage,
+  WIDGETS_JS_SRC,
+} from "../src/page";
 import type { Feed, FeedEvent } from "../src/types";
 import ICAL from "ical.js";
 
@@ -39,6 +47,49 @@ function assertTweetCards(html: string, events: FeedEvent[]): void {
     assert(
       html.includes(`class="card" href="${href}"`),
       `whole card must link to source URL ${href}`,
+    );
+  }
+}
+
+function assertOfficialEmbeds(html: string, events: FeedEvent[]): void {
+  const embeddable = events.filter((event) => statusPermalink(event.url));
+  if (embeddable.length === 0) {
+    assert(!html.includes("twitter-tweet"), "no tweet embed markup without status URLs");
+    assert(!html.includes(WIDGETS_JS_SRC), "widgets.js stays off when nothing to embed");
+    return;
+  }
+  const subscribeIdx = html.indexOf("Subscribe to confirmed");
+  const widgetsIdx = html.indexOf(WIDGETS_JS_SRC);
+  assert(subscribeIdx >= 0, "subscribe CTA is present");
+  assert(widgetsIdx > subscribeIdx, "widgets.js loads after subscribe CTAs");
+  assert(
+    html.includes(`<script async src="${WIDGETS_JS_SRC}" charset="utf-8"`),
+    "widgets.js is loaded asynchronously from platform.twitter.com",
+  );
+  assert(!html.includes("syndication.twitter.com"), "no X syndication scrape");
+  assert(!html.includes("publish.twitter.com/oembed"), "no oEmbed scrape");
+  assert(!html.includes("<img"), "no avatar image requests beyond widgets.js");
+  const quotes = [...html.matchAll(/<blockquote class="twitter-tweet"[^>]*>[\s\S]*?<\/blockquote>/g)];
+  assert(quotes.length === embeddable.length, `expected ${embeddable.length} twitter-tweet embeds, got ${quotes.length}`);
+  for (const event of embeddable) {
+    const href = statusPermalink(event.url);
+    assert(href, "embeddable event has a status URL from the feed");
+    assert(
+      html.includes(`<blockquote class="twitter-tweet" data-theme="dark">`),
+      "official twitter-tweet markup is the default recent item",
+    );
+    assert(
+      quotes.some((match) => match[0].includes(`href="${href}"`)),
+      `twitter-tweet links the feed status URL ${href}`,
+    );
+  }
+  for (const event of events) {
+    if (statusPermalink(event.url)) continue;
+    const href = event.url;
+    if (!href) continue;
+    assert(
+      !html.includes(`<blockquote class="twitter-tweet" data-theme="dark"><p>${eventCardText(event)}</p><a href="${href}">`),
+      `non-status URL ${href} must not become an X embed`,
     );
   }
 }
@@ -386,6 +437,7 @@ async function testLiveFeed(): Promise<void> {
   assert(html.includes("Refreshes about every 15 minutes."), "live landing cadence is English");
   assert(!/[\u4e00-\u9fff]/.test(html), "live landing has no Chinese copy");
   assertTweetCards(html, recent);
+  assertOfficialEmbeds(html, recent);
 }
 
 function testSubscribePage(): void {
@@ -412,12 +464,12 @@ function testSubscribePage(): void {
     "whole card is clickable to the source URL",
   );
   assertTweetCards(html, recent);
+  assertOfficialEmbeds(html, recent);
   assert(html.includes("Future confirmed reset with a long summary"), "card reuses feed summary/text");
   assert(html.includes("2026-09-20 18:00 UTC"), "card time prefers announced_at");
   assert(html.includes(SOURCE_HANDLE), "card may show a static handle");
-  assert(!html.includes("<img"), "no avatar image requests");
-  assert(!html.includes("platform.twitter.com"), "no official X embed widgets");
-  assert(!html.includes("twitter-widgets") && !html.includes("twitter-tweet"), "no X widget markup");
+  assert(html.includes('data-embed="pending"'), "lightweight cards stay as embed fallback");
+  assert(html.includes("<noscript>"), "noscript keeps lightweight cards without JS");
 
   const dateOnly = subscribePage([
     {
@@ -429,6 +481,41 @@ function testSubscribePage(): void {
   ]);
   assert(dateOnly.includes("2026-09-01"), "card time falls back to date");
   assert(dateOnly.includes("Plain text body from feed.text"), "card text falls back to feed.text");
+  assertOfficialEmbeds(dateOnly, [
+    {
+      id: "date-only-card",
+      date: "2026-09-01",
+      text: "Plain text body from feed.text",
+      url: "https://x.com/thsottiaux/status/date-only-card",
+    },
+  ]);
+
+  const empty = subscribePage([]);
+  assert(!empty.includes("twitter-tweet"), "empty recent has no embeds");
+  assert(!empty.includes(WIDGETS_JS_SRC), "empty recent does not load widgets.js");
+  assert(empty.includes("Subscribe to confirmed"), "empty recent still has subscribe CTAs");
+
+  const nonStatus = subscribePage([
+    {
+      id: "radar-link",
+      summary: "Radar note, not a tweet status",
+      url: "https://codex-reset.com/event/1",
+    },
+  ]);
+  assertOfficialEmbeds(nonStatus, [
+    {
+      id: "radar-link",
+      summary: "Radar note, not a tweet status",
+      url: "https://codex-reset.com/event/1",
+    },
+  ]);
+  assert(nonStatus.includes('class="card" href="https://codex-reset.com/event/1"'), "non-status URLs stay on lightweight cards");
+
+  assert(statusPermalink("https://x.com/thsottiaux/status/123") === "https://x.com/thsottiaux/status/123", "x.com status URLs embed");
+  assert(statusPermalink("https://twitter.com/thsottiaux/status/123") === "https://twitter.com/thsottiaux/status/123", "twitter.com status URLs embed");
+  assert(statusPermalink("https://twitter.com/i/status/123") === "https://twitter.com/i/status/123", "i/status URLs embed");
+  assert(statusPermalink("https://codex-reset.com/event/1") === null, "non-X URLs are not status permalinks");
+  assert(statusPermalink("javascript:alert(1)") === null, "non-http URLs are rejected");
 }
 
 async function main(): Promise<void> {

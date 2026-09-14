@@ -6,6 +6,18 @@ export const CADENCE_COPY = "Refreshes about every 15 minutes.";
 export const RECENT_CONFIRMED_LIMIT = 8;
 export const SUBSCRIBE_HOST = "resetcal.app";
 export const SOURCE_HANDLE = "@thsottiaux";
+export const WIDGETS_JS_SRC = "https://platform.twitter.com/widgets.js";
+export const EMBED_TIMEOUT_MS = 8000;
+
+const STATUS_HOSTS = new Set([
+  "x.com",
+  "www.x.com",
+  "mobile.x.com",
+  "twitter.com",
+  "www.twitter.com",
+  "mobile.twitter.com",
+]);
+const STATUS_PATH = /^\/(?:i|[A-Za-z0-9_]{1,15})\/status(?:es)?\/([^/?#]+)/i;
 
 function escapeHtml(value: string): string {
   return value
@@ -25,6 +37,20 @@ function safeHttpUrl(value: string | null | undefined): string | null {
     return null;
   }
   return null;
+}
+
+export function statusPermalink(value: string | null | undefined): string | null {
+  const href = safeHttpUrl(value);
+  if (!href) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(href);
+  } catch {
+    return null;
+  }
+  if (!STATUS_HOSTS.has(parsed.hostname.toLowerCase())) return null;
+  if (!STATUS_PATH.test(parsed.pathname)) return null;
+  return href;
 }
 
 function pad2(value: number): string {
@@ -62,24 +88,71 @@ export function eventCardText(event: FeedEvent): string {
   return (event.summary ?? event.text ?? "").trim();
 }
 
+function lightCardHtml(event: FeedEvent): string {
+  const href = safeHttpUrl(event.url);
+  const time = eventCardTime(event);
+  const text = eventCardText(event);
+  const inner = `<span class="card-handle">${escapeHtml(SOURCE_HANDLE)}</span>${
+    time ? `<time class="card-time">${escapeHtml(time)}</time>` : ""
+  }${text ? `<p class="card-text">${escapeHtml(text)}</p>` : ""}`;
+  if (href) {
+    return `<a class="card" href="${escapeHtml(href)}">${inner}</a>`;
+  }
+  return `<div class="card">${inner}</div>`;
+}
+
+function tweetEmbedHtml(event: FeedEvent, status: string): string {
+  const text = eventCardText(event);
+  const time = eventCardTime(event);
+  const body = text ? `<p>${escapeHtml(text)}</p>` : "";
+  const label = escapeHtml(time || SOURCE_HANDLE);
+  return `<blockquote class="twitter-tweet" data-theme="dark">${body}<a href="${escapeHtml(status)}">${label}</a></blockquote>`;
+}
+
+function recentItemHtml(event: FeedEvent): string {
+  const status = statusPermalink(event.url);
+  const card = lightCardHtml(event);
+  if (!status) return card;
+  return `<div class="recent-item" data-recent-embed data-embed="pending">${tweetEmbedHtml(event, status)}${card}</div>`;
+}
+
 function recentCardsHtml(events: FeedEvent[]): string {
   if (events.length === 0) return "";
-  const cards = events
-    .map((event) => {
-      const href = safeHttpUrl(event.url);
-      const time = eventCardTime(event);
-      const text = eventCardText(event);
-      const inner = `<span class="card-handle">${escapeHtml(SOURCE_HANDLE)}</span>${
-        time ? `<time class="card-time">${escapeHtml(time)}</time>` : ""
-      }${text ? `<p class="card-text">${escapeHtml(text)}</p>` : ""}`;
-      if (href) {
-        return `<a class="card" href="${escapeHtml(href)}">${inner}</a>`;
-      }
-      return `<div class="card">${inner}</div>`;
-    })
-    .join("");
+  const cards = events.map(recentItemHtml).join("");
   return `<h2 class="recent-heading">Recent confirmed</h2>
     <div class="cards">${cards}</div>`;
+}
+
+function recentWidgetsLoaderHtml(hasEmbeds: boolean): string {
+  if (!hasEmbeds) return "";
+  return `<script>
+(function () {
+  var items = document.querySelectorAll("[data-recent-embed]");
+  if (!items.length) return;
+  function fail(item) {
+    if (item.getAttribute("data-embed") !== "ready") item.setAttribute("data-embed", "failed");
+  }
+  function failAll() {
+    items.forEach(fail);
+  }
+  window.__resetcalFailEmbeds = failAll;
+  items.forEach(function (item) {
+    window.setTimeout(function () { fail(item); }, ${EMBED_TIMEOUT_MS});
+  });
+  var t = window.twttr = window.twttr || {};
+  t._e = t._e || [];
+  t.ready = t.ready || function (f) { t._e.push(f); };
+  t.ready(function (twttr) {
+    twttr.events.bind("rendered", function (event) {
+      var node = event && event.target;
+      var item = node && node.closest && node.closest("[data-recent-embed]");
+      if (!item) return;
+      item.setAttribute("data-embed", "ready");
+    });
+  });
+})();
+</script>
+<script async src="${WIDGETS_JS_SRC}" charset="utf-8" onerror="window.__resetcalFailEmbeds&&window.__resetcalFailEmbeds()"></script>`;
 }
 
 export function subscribePage(recent: FeedEvent[] = []): string {
@@ -87,6 +160,7 @@ export function subscribePage(recent: FeedEvent[] = []): string {
   const httpsConfirmed = `https://${SUBSCRIBE_HOST}/calendar.ics`;
   const webcalTentative = `webcal://${SUBSCRIBE_HOST}/calendar-tentative.ics`;
   const httpsTentative = `https://${SUBSCRIBE_HOST}/calendar-tentative.ics`;
+  const hasEmbeds = recent.some((event) => statusPermalink(event.url) !== null);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -143,6 +217,12 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       gap: 0.65rem;
       margin: 0 0 1.25rem;
     }
+    .recent-item { min-width: 0; }
+    .recent-item iframe { max-width: 100%; }
+    .recent-item[data-embed="pending"] > .card,
+    .recent-item[data-embed="ready"] .card { display: none; }
+    .recent-item[data-embed="failed"] > .twitter-tweet,
+    .recent-item[data-embed="failed"] iframe { display: none; }
     .card {
       display: block;
       text-decoration: none;
@@ -173,9 +253,23 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
+    blockquote.twitter-tweet {
+      margin: 0;
+      padding: 0.9rem 1rem;
+      background: #16181d;
+      border: 1px solid #2a2d34;
+      border-radius: 16px;
+    }
+    blockquote.twitter-tweet a { color: #9ad; }
     footer { color: #8a8a8a; font-size: 0.92rem; }
     footer a { color: #bdbdbd; }
   </style>
+  <noscript>
+    <style>
+      .recent-item[data-embed="pending"] > .card { display: block; }
+      .recent-item[data-embed="pending"] > .twitter-tweet { display: none; }
+    </style>
+  </noscript>
 </head>
 <body>
   <main>
@@ -198,6 +292,7 @@ export function subscribePage(recent: FeedEvent[] = []): string {
       <a href="https://resetbeacon.com">resetbeacon.com</a>
     </footer>
   </main>
+  ${recentWidgetsLoaderHtml(hasEmbeds)}
 </body>
 </html>`;
 }
