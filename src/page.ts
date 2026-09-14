@@ -5,6 +5,7 @@ import type { FeedEvent } from "./types";
 const COPY = "resetcal — unofficial Codex reset calendar. Not OpenAI. Not your quota.";
 export const CADENCE_COPY = "约每 15 分钟刷新";
 export const RECENT_CONFIRMED_LIMIT = 8;
+export const SUBSCRIBE_HOST = "resetcal.app";
 
 function escapeHtml(value: string): string {
   return value
@@ -72,11 +73,11 @@ function recentListHtml(events: FeedEvent[]): string {
     <ul class="recent">${items}</ul>`;
 }
 
-export function subscribePage(origin: string, host: string, recent: FeedEvent[] = []): string {
-  const webcalConfirmed = `webcal://${host}/calendar.ics`;
-  const httpsConfirmed = `${origin}/calendar.ics`;
-  const webcalTentative = `webcal://${host}/calendar-tentative.ics`;
-  const httpsTentative = `${origin}/calendar-tentative.ics`;
+export function subscribePage(recent: FeedEvent[] = []): string {
+  const webcalConfirmed = `webcal://${SUBSCRIBE_HOST}/calendar.ics`;
+  const httpsConfirmed = `https://${SUBSCRIBE_HOST}/calendar.ics`;
+  const webcalTentative = `webcal://${SUBSCRIBE_HOST}/calendar-tentative.ics`;
+  const httpsTentative = `https://${SUBSCRIBE_HOST}/calendar-tentative.ics`;
 
   return `<!DOCTYPE html>
 <html lang="en">

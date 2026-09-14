@@ -358,11 +358,13 @@ function testSubscribePage(): void {
     recent.every((event) => confirmed.some((row) => row.id === event.id)),
     "recent confirmed reuses the confirmed filter",
   );
-  const html = subscribePage("https://example.test", "example.test", recent);
-  assert(html.includes("webcal://example.test/calendar.ics"), "webcal uses request host");
-  assert(html.includes("https://example.test/calendar.ics"), "https fallback uses request origin");
-  assert(html.includes("webcal://example.test/calendar-tentative.ics"), "tentative webcal uses request host");
-  assert(!html.includes("workers.dev"), "subscribe links are not hardcoded to workers.dev");
+  const html = subscribePage(recent);
+  assert(html.includes('href="webcal://resetcal.app/calendar.ics"'), "confirmed webcal is resetcal.app");
+  assert(html.includes('href="https://resetcal.app/calendar.ics"'), "confirmed https fallback is resetcal.app");
+  assert(html.includes('href="webcal://resetcal.app/calendar-tentative.ics"'), "tentative webcal is resetcal.app");
+  assert(html.includes('href="https://resetcal.app/calendar-tentative.ics"'), "tentative https fallback is resetcal.app");
+  assert(!html.includes("workers.dev"), "subscribe CTAs are not workers.dev");
+  assert(!html.includes("example.test"), "subscribe CTAs are not request host");
   assert(html.includes(CADENCE_COPY), "landing page states 15-minute refresh cadence");
   assert(html.includes("https://x.com/thsottiaux/status/confirmed-window"), "recent row links to source URL");
   assert(html.includes("2026-09-20 · Codex reset"), "recent row uses short date label");

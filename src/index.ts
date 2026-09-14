@@ -101,7 +101,7 @@ export default {
         } catch {
           // Keep subscribe links even if the feed is unavailable.
         }
-        return new Response(subscribePage(url.origin, url.host, recent), {
+        return new Response(subscribePage(recent), {
           headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=300" },
         });
       }
