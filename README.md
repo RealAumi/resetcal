@@ -8,12 +8,12 @@ A thin Cloudflare Worker that turns the existing [codex-reset.com](https://codex
 
 | Method | Path | What |
 | --- | --- | --- |
-| `GET` | `/` | Subscribe page, tweet-style recent confirmed cards, refreshes about every 15 minutes |
+| `GET` | `/` | Subscribe page, recent confirmed (official X embeds, lightweight fallback), refreshes about every 15 minutes |
 | `GET` | `/calendar.ics` | Confirmed resets |
 | `GET` | `/calendar-tentative.ics` | Tentative / preview / scheduled |
 | `GET` | `/health` | Last successful feed fetch time |
 
-Primary subscribe is `webcal://resetcal.app/calendar.ics`, with `https://resetcal.app/calendar.ics` as fallback. Tentative is `webcal://resetcal.app/calendar-tentative.ics` and `https://resetcal.app/calendar-tentative.ics`. Subscribe CTAs are locked to `resetcal.app`, not the request host and not `workers.dev`. Recent confirmed uses the same `selectEvents(..., "confirmed")` set as the calendar, rendered as lightweight tweet-style cards (time, summary/text, source URL). No avatar fetches, X embeds, or X scraping.
+Primary subscribe is `webcal://resetcal.app/calendar.ics`, with `https://resetcal.app/calendar.ics` as fallback. Tentative is `webcal://resetcal.app/calendar-tentative.ics` and `https://resetcal.app/calendar-tentative.ics`. Subscribe CTAs are locked to `resetcal.app`, not the request host and not `workers.dev`. Recent confirmed uses the same `selectEvents(..., "confirmed")` set as the calendar. Default rendering is the official X tweet embed (`blockquote.twitter-tweet` + async `platform.twitter.com/widgets.js`) for feed `x.com` / `twitter.com` status URLs. If the embed fails, is blocked, or JS is off, the existing lightweight cards remain as fallback. Status URLs come only from the feed; no X scraping, no extra avatar fetches, no radar expansion. `widgets.js` is async and loaded after the subscribe CTAs.
 
 Each VEVENT uses a short fixed `SUMMARY` (`Codex reset`). Full source text stays in `DESCRIPTION`; `URL` points at the source post. Window moves increment `SEQUENCE`. No `VALARM` or `ATTACH`.
 
